@@ -13,49 +13,9 @@ struct StatsHandler {
 impl MessageHandler for StatsHandler {
     async fn handle(&self, event: &Event, api: &VkApi) -> VkResult<()> {
         match event {
-            Event::MessageEvent(event) => match &event.payload {
-                Some(payload) => {
-                    let command = &payload["command"];
-                    api.messages_send(
-                        event.peer_id,
-                        &format!("command: {}", command),
-                        None,
-                        None,
-                        None,
-                        None,
-                        None,
-                        false,
-                        false,
-                        None,
-                    )
-                    .await?;
-                    return Ok(());
-                }
-                None => {
-                    api.messages_send(
-                        event.peer_id,
-                        &"Failed to get payload",
-                        None,
-                        None,
-                        None,
-                        None,
-                        None,
-                        false,
-                        false,
-                        None,
-                    )
-                    .await?;
-                    return Ok(());
-                }
-            },
             Event::MessageNew(message) if message.text.starts_with("/stats") => {
                 let count = self.message_count.load(std::sync::atomic::Ordering::SeqCst);
                 let now = Utc::now();
-
-                let key = Keyboard::new()
-                    .add_callback_button("GOIDA", json!({"command": "goidagoida"}), None)
-                    .add_row(Vec::new())
-                    .add_callback_button("ZALUPA", json!({"command": "zalupazalupa"}), None);
 
                 api.messages_send(
                     message.peer_id,
@@ -64,7 +24,7 @@ impl MessageHandler for StatsHandler {
                         count,
                         now.format("%Y-%m-%d %H:%M:%S")
                     ),
-                    Some(&key),
+                    None,
                     None,
                     None,
                     Some(message.id),
@@ -103,9 +63,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // Add multiple handlers
     bot.add_handler(DefaultMessageHandler);
     bot.add_handler(StatsHandler::default());
-    // bot.add_handler(WeatherHandler {
-    //     api_key: std::env::var("WEATHER_API_KEY").unwrap_or_default(),
-    // });
 
     // Add admin handler if specified
     if let Ok(admin_ids) = std::env::var("VK_ADMIN_IDS") {
@@ -116,7 +73,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
         if !ids.is_empty() {
             println!("⚙️ Admin handlers enabled for IDs: {ids:?}");
-            bot.add_handler(AdminHandler::new(ids));
+            bot.add_handler(AdminHandler::new(ids.clone()));
         }
     }
 

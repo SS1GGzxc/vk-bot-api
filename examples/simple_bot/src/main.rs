@@ -39,7 +39,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             .collect();
 
         if !admin_ids.is_empty() {
-            bot.add_handler(AdminHandler::new(admin_ids));
+            bot.add_handler(AdminHandler::new(admin_ids.clone()));
             println!("Admin handler added for IDs: {:?}", admin_ids);
         }
     }
