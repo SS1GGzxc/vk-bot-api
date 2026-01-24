@@ -1,0 +1,47 @@
+name: Pull Request Checks
+
+on:
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v6
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        components: rustfmt, clippy
+
+    - name: Check formatting
+      run: cargo fmt -- --check
+
+    - name: Clippy
+      run: cargo clippy --all-targets --all-features -- -D warnings
+
+    - name: Build
+      run: cargo build --verbose
+
+    - name: Run tests
+      run: cargo test --verbose
+
+  size:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
+
+    - name: Check binary size
+      run: |
+        cargo build --release --examples
+
+        echo "Binary sizes:"
+        for bin in target/release/examples/*; do
+          if [ -f "$bin" ] && [ -x "$bin" ]; then
+            size=$(stat -c%s "$bin")
+            echo "$(basename "$bin"): $((size/1024)) KB"
+          fi
+        done

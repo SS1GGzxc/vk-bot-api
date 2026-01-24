@@ -1,0 +1,100 @@
+[package]
+name = "vk-bot-api"
+version = "0.1.0"
+edition = "2024"
+description = "Asynchronous VK Bot API library for Rust"
+repository = "https://github.com/yourusername/vk-bot-api"
+keywords = ["vk", "bot", "api", "async", "messaging"]
+categories = ["api-bindings", "asynchronous"]
+license = "Apache-2.0"
+readme = "README.md"
+authors = ["Ivan Kirillov <sterletivakiril@gmail.com>"]
+exclude = [
+    "**/.gitignore",
+    "**/.github",
+    "**/.vscode",
+    "examples/*/target",
+    "target",
+]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[features]
+default = ["full"]
+full = [
+    "api",
+    "bot",
+    "models",
+    "keyboard",
+    "handler",
+    "error",
+    "utils",
+    "tokio",
+    "reqwest",
+    "serde",
+    "json",
+    "logging",
+    "chrono",
+    "uuid"
+]
+
+# Основные фичи модулей
+api = ["reqwest", "serde", "json", "uuid", "chrono", "thiserror"]
+bot = ["api", "handler", "models", "tokio", "futures"]
+models = ["serde", "json", "chrono"]
+keyboard = ["serde", "json"]
+handler = ["api", "models", "keyboard", "async-trait"]
+error = ["thiserror"]
+utils = ["chrono", "uuid"]
+
+# Вспомогательные фичи для зависимостей
+tokio = ["dep:tokio"]
+reqwest = ["dep:reqwest"]
+serde = ["dep:serde", "dep:serde_json"]
+json = ["dep:serde_json"]
+logging = ["log", "tracing"]
+chrono = ["dep:chrono"]
+uuid = ["dep:uuid"]
+
+[dependencies]
+bytes = "1.0"
+
+async-trait = {version = "0.1", optional = true}
+thiserror = {version = "2.0", optional = true}
+futures = {version = "0.3", optional = true}
+tokio = { version = "1.49", features = ["full", "time", "sync"], optional = true }
+reqwest = { version = "0.13", features = ["json", "form"], optional = true }
+serde = { version = "1.0", features = ["derive"], optional = true }
+serde_json = { version = "1.0", optional = true }
+log = { version = "0.4", optional = true }
+tracing = { version = "0.1", optional = true }
+chrono = { version = "0.4", features = ["serde"], optional = true }
+uuid = { version = "1.0", features = ["v4", "serde"], optional = true }
+
+[dev-dependencies]
+tokio = { version = "1.49", features = ["full", "macros", "rt-multi-thread"] }
+reqwest = { version = "0.13", features = ["json"] }
+serde_json = "1.0"
+env_logger = "0.11"
+dotenv = "0.15"
+rand = "0.9"
+
+[lib]
+name = "vk_bot_api"
+path = "src/lib.rs"
+
+[badges]
+maintenance = { status = "actively-developed" }
+github-actions = { repository = "yourusername/vk-bot-api", workflow = "CI" }
+
+[profile.dev]
+opt-level = 0
+debug = true
+
+[profile.release]
+opt-level = 3
+debug = false
+lto = true
+codegen-units = 1

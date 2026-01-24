@@ -1,0 +1,17 @@
+[build]
+rustflags = ["-D", "warnings"]
+
+[profile.dev]
+incremental = true
+
+[profile.release]
+lto = true
+codegen-units = 1
+incremental = false
+
+[alias]
+ci = "check --tests --examples --benches --bins"
+fmt-check = "fmt -- --check"
+clippy-all = "clippy --all-targets --all-features -- -D warnings"
+test-all = "test --all-features --all-targets"
+doc-all = "doc --all-features --no-deps"

@@ -1,0 +1,102 @@
+//! # VK Bot API for Rust
+//!
+//! A modern, asynchronous, fully-featured VK Bot API library for Rust.
+//!
+//! ## Features
+//!
+//! - Full VK Bot API coverage
+//! - Async/await support
+//! - Strongly typed models
+//! - Extensible handler system
+//! - Multiple update delivery methods (Long Poll, Webhooks)
+//! - Support for all attachment types
+//! - Inline keyboards and callbacks
+//! - Error handling and retries
+//!
+//! ## Quick Start
+//!
+//! ```no_run
+//! use vk_bot_api::prelude::*;
+//!
+//! #[tokio::main]
+//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     let token = std::env::var("VK_TOKEN")?;
+//!     let group_id = std::env::var("VK_GROUP_ID")?.parse()?;
+//!
+//!     let mut bot = VkBot::new(&token, group_id);
+//!     bot.add_handler(DefaultMessageHandler);
+//!     bot.run().await?;
+//!
+//!     Ok(())
+//! }
+//! ```
+
+// #![warn(missing_docs)]
+#![allow(missing_docs)]
+#![warn(rust_2018_idioms)]
+
+// Все модули всегда доступны
+pub mod api;
+pub mod bot;
+pub mod error;
+pub mod handler;
+pub mod keyboard;
+pub mod models;
+pub mod utils;
+
+/// Prelude module for convenient imports
+pub mod prelude {
+    /// Re-export bot module types
+    pub use crate::bot::{VkBot, VkBotBuilder};
+
+    /// Re-export api module types
+    pub use crate::api::{VkApi, VkApiBuilder};
+
+    /// Re-export models
+    pub use crate::models::*;
+
+    /// Re-export keyboard
+    pub use crate::keyboard::*;
+
+    /// Re-export handler
+    pub use crate::handler::*;
+
+    /// Re-export error
+    pub use crate::error::*;
+
+    /// Re-export utils
+    pub use crate::utils::*;
+}
+
+// Re-exports
+pub use api::VkApi;
+pub use bot::VkBot;
+pub use error::{VkError, VkResult};
+pub use handler::{DefaultMessageHandler, MessageHandler};
+
+/// Logging macro for VK Bot API
+#[macro_export]
+macro_rules! vk_log {
+    ($($arg:tt)*) => {
+        #[cfg(feature = "logging")]
+        log::info!($($arg)*);
+    };
+}
+
+/// Error logging macro for VK Bot API
+#[macro_export]
+macro_rules! vk_error {
+    ($($arg:tt)*) => {
+        #[cfg(feature = "logging")]
+        log::error!($($arg)*);
+    };
+}
+
+/// Warning logging macro for VK Bot API
+#[macro_export]
+macro_rules! vk_warn {
+    ($($arg:tt)*) => {
+        #[cfg(feature = "logging")]
+        log::warn!($($arg)*);
+    };
+}
