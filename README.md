@@ -24,4 +24,4 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-vk-bot-api = "0.1"
+vk-bot-api = "1.0"

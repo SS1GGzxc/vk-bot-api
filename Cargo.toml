@@ -1,9 +1,9 @@
 [package]
 name = "vk-bot-api"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2024"
 description = "Asynchronous VK Bot API library for Rust"
-repository = "https://github.com/yourusername/vk-bot-api"
+repository = "https://github.com/SS1GGzxc/vk-bot-api"
 keywords = ["vk", "bot", "api", "async", "messaging"]
 categories = ["api-bindings", "asynchronous"]
 license = "Apache-2.0"
@@ -40,7 +40,6 @@ full = [
     "uuid"
 ]
 
-# Основные фичи модулей
 api = ["reqwest", "serde", "json", "uuid", "chrono", "thiserror"]
 bot = ["api", "handler", "models", "tokio", "futures"]
 models = ["serde", "json", "chrono"]
@@ -49,7 +48,6 @@ handler = ["api", "models", "keyboard", "async-trait"]
 error = ["thiserror"]
 utils = ["chrono", "uuid"]
 
-# Вспомогательные фичи для зависимостей
 tokio = ["dep:tokio"]
 reqwest = ["dep:reqwest"]
 serde = ["dep:serde", "dep:serde_json"]
@@ -87,7 +85,7 @@ path = "src/lib.rs"
 
 [badges]
 maintenance = { status = "actively-developed" }
-github-actions = { repository = "yourusername/vk-bot-api", workflow = "CI" }
+github-actions = { repository = "SS1GGzxc/vk-bot-api", workflow = "CI" }
 
 [profile.dev]
 opt-level = 0
