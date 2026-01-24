@@ -61,7 +61,7 @@ impl MessageHandler for DefaultMessageHandler {
 
 impl DefaultMessageHandler {
     async fn handle_command(&self, message: &crate::models::Message, api: &VkApi) -> VkResult<()> {
-        let command = message.text.trim().split_whitespace().next().unwrap_or("");
+        let command = message.text.split_whitespace().next().unwrap_or("");
 
         match command {
             "/start" | "/help" => {
@@ -247,27 +247,23 @@ impl DefaultMessageHandler {
             )
             .await;
 
-        if let Some(payload) = &event.payload {
-            if let Some(command) = payload.get("command").and_then(|c| c.as_str()) {
-                match command {
-                    "help" => {
-                        api.messages_send(
-                            event.peer_id,
-                            "Help: Use /commands for available commands",
-                            None,
-                            None,
-                            None,
-                            None,
-                            None,
-                            false,
-                            false,
-                            None,
-                        )
-                        .await?;
-                    }
-                    _ => {}
-                }
-            }
+        if let Some(payload) = &event.payload
+            && let Some(command) = payload.get("command").and_then(|c| c.as_str())
+            && command == "help"
+        {
+            api.messages_send(
+                event.peer_id,
+                "Help: Use /commands for available commands",
+                None,
+                None,
+                None,
+                None,
+                None,
+                false,
+                false,
+                None,
+            )
+            .await?;
         }
 
         Ok(())
@@ -322,13 +318,10 @@ impl AdminHandler {
 #[async_trait]
 impl MessageHandler for AdminHandler {
     async fn handle(&self, event: &Event, api: &VkApi) -> VkResult<()> {
-        match event {
-            Event::MessageNew(message) => {
-                if self.is_admin(message.from_id) {
-                    self.handle_admin_command(message, api).await?;
-                }
-            }
-            _ => {}
+        if let Event::MessageNew(message) = event
+            && self.is_admin(message.from_id)
+        {
+            self.handle_admin_command(message, api).await?;
         }
 
         Ok(())

@@ -244,6 +244,7 @@ impl VkApi {
         ))
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn messages_send(
         &self,
         peer_id: i64,
@@ -309,6 +310,7 @@ impl VkApi {
         Ok(message_id)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn messages_edit(
         &self,
         peer_id: i64,

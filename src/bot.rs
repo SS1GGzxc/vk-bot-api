@@ -2,8 +2,9 @@ use crate::api::{LongPollServer, VkApi};
 use crate::error::{VkError, VkResult};
 use crate::handler::MessageHandler;
 use crate::models::{Event, Update};
+use crate::vk_error;
 use futures::stream::{self, StreamExt};
-use log::{error, info, warn};
+use log::{info, warn};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::sleep;
@@ -225,10 +226,10 @@ impl VkBot {
             match failed {
                 1 => {
                     // Update ts only
-                    if let Some(ts) = json_response["ts"].as_str() {
-                        if let Some(ref mut server) = self.long_poll_server {
-                            server.ts = ts.to_string();
-                        }
+                    if let Some(ts) = json_response["ts"].as_str()
+                        && let Some(ref mut server) = self.long_poll_server
+                    {
+                        server.ts = ts.to_string();
                     }
                     return Ok(Vec::new());
                 }
@@ -249,10 +250,10 @@ impl VkBot {
         }
 
         // Update ts
-        if let Some(ts) = json_response["ts"].as_str() {
-            if let Some(ref mut server) = self.long_poll_server {
-                server.ts = ts.to_string();
-            }
+        if let Some(ts) = json_response["ts"].as_str()
+            && let Some(ref mut server) = self.long_poll_server
+        {
+            server.ts = ts.to_string();
         }
 
         // Parse updates
@@ -287,7 +288,7 @@ impl VkBot {
                 // Process with all handlers
                 for handler in handlers.iter() {
                     if let Err(e) = handler.handle(&event, &api).await {
-                        error!("Handler error: {}", e);
+                        vk_error!("Handler error: {}", e);
                     }
                 }
             }
@@ -317,7 +318,7 @@ impl VkBot {
                     }
                 }
                 Err(e) => {
-                    error!("Long Poll error: {}", e);
+                    vk_error!("Long Poll error: {}", e);
 
                     if !self.config.auto_reconnect {
                         return Err(e);
@@ -326,7 +327,7 @@ impl VkBot {
                     reconnect_attempts += 1;
 
                     if reconnect_attempts > self.config.max_reconnect_attempts {
-                        error!("Maximum reconnection attempts reached");
+                        vk_error!("Maximum reconnection attempts reached");
                         return Err(e);
                     }
 
@@ -341,7 +342,7 @@ impl VkBot {
 
                     // Try to reinitialize
                     if let Err(e) = self.init().await {
-                        error!("Failed to reinitialize: {}", e);
+                        vk_error!("Failed to reinitialize: {}", e);
                     } else {
                         info!("Reconnected successfully");
                     }

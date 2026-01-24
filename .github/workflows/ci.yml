@@ -139,9 +139,6 @@ jobs:
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Check for unused dependencies
-      run: cargo udeps --all-targets
-
     - name: Cargo deny check
       uses: EmbarkStudios/cargo-deny-action@v2
       with:

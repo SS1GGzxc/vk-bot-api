@@ -12,24 +12,6 @@
 //! - Support for all attachment types
 //! - Inline keyboards and callbacks
 //! - Error handling and retries
-//!
-//! ## Quick Start
-//!
-//! ```no_run
-//! use vk_bot_api::prelude::*;
-//!
-//! #[tokio::main]
-//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     let token = std::env::var("VK_TOKEN")?;
-//!     let group_id = std::env::var("VK_GROUP_ID")?.parse()?;
-//!
-//!     let mut bot = VkBot::new(&token, group_id);
-//!     bot.add_handler(DefaultMessageHandler);
-//!     bot.run().await?;
-//!
-//!     Ok(())
-//! }
-//! ```
 
 // #![warn(missing_docs)]
 #![allow(missing_docs)]

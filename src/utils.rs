@@ -54,11 +54,11 @@ pub fn create_payload(command: &str, data: Option<serde_json::Value>) -> serde_j
         "command": command,
     });
 
-    if let Some(data) = data {
-        if let Some(obj) = payload.as_object_mut() {
-            for (key, value) in data.as_object().unwrap() {
-                obj.insert(key.clone(), value.clone());
-            }
+    if let Some(data) = data
+        && let Some(obj) = payload.as_object_mut()
+    {
+        for (key, value) in data.as_object().unwrap() {
+            obj.insert(key.clone(), value.clone());
         }
     }
 
