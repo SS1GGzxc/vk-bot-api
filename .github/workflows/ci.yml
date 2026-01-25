@@ -64,29 +64,17 @@ jobs:
 
   docs:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     needs: build-and-test
-    # if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
 
     steps:
-    - uses: actions/checkout@v6
-      with:
-        fetch-depth: 0
+      - name: Checkout repository
+        uses: actions/checkout@v6
 
-    - name: Install Rust
-      uses: dtolnay/rust-toolchain@stable
-      with:
-        components: rust-docs
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
 
-    - name: Build documentation
-      run: cargo doc --no-deps --all-features
-
-    - name: Deploy documentation
-      uses: peaceiris/actions-gh-pages@v4
-      with:
-        github_token: ${{ secrets.GITHUB_TOKEN }}
-        publish_dir: ./target/doc/vk_bot_api
+      - name: Check documentation
+        run: cargo doc --no-deps --document-private-items --all-features
 
   security:
     runs-on: ubuntu-latest
