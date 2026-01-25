@@ -86,7 +86,7 @@ jobs:
       uses: peaceiris/actions-gh-pages@v4
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}
-        publish_dir: ./target/doc
+        publish_dir: ./target/doc/vk_bot_api
 
   security:
     runs-on: ubuntu-latest
