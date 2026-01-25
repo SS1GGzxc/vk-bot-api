@@ -8,15 +8,15 @@ A modern, asynchronous, fully-featured VK Bot API library for Rust.
 
 ## Features
 
-✅ **Full API coverage** - All VK Bot API methods implemented
-✅ **Async/await** - Built on Tokio and async/await
-✅ **Type-safe** - Strongly typed models and responses
-✅ **Extensible** - Custom handlers and middleware support
-✅ **Production-ready** - Error handling, retries, rate limiting
-✅ **Webhook & Long Poll** - Multiple update delivery methods
-✅ **Attachments support** - Photos, videos, documents, etc.
-✅ **Inline keyboards** - Rich interactive keyboards
-✅ **Documentation** - Comprehensive docs and examples
+- **Full API coverage** - All VK Bot API methods implemented
+- **Async/await** - Built on Tokio and async/await
+- **Type-safe** - Strongly typed models and responses
+- **Extensible** - Custom handlers and middleware support
+- **Production-ready** - Error handling, retries, rate limiting
+- **Webhook & Long Poll** - Multiple update delivery methods
+- **Attachments support** - Photos, videos, documents, etc.
+- **Inline keyboards** - Rich interactive keyboards
+- **Documentation** - Comprehensive docs and examples
 
 ## Installation
 
@@ -25,3 +25,4 @@ Add to your `Cargo.toml`:
 ```toml
 [dependencies]
 vk-bot-api = "1.0"
+```
