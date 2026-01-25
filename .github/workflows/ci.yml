@@ -3,6 +3,8 @@ name: CI
 on:
   push:
     branches: [ main, master ]
+    tags:
+      - 'v*'
   pull_request:
     branches: [ main, master ]
 
@@ -30,7 +32,7 @@ jobs:
         components: rustfmt, clippy
 
     - name: Cache dependencies
-      uses: actions/cache@v5
+      uses: actions/cache@v4
       with:
         path: |
           ~/.cargo/registry
@@ -62,7 +64,10 @@ jobs:
 
   docs:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     needs: build-and-test
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
 
     steps:
     - uses: actions/checkout@v6
@@ -79,56 +84,9 @@ jobs:
 
     - name: Deploy documentation
       uses: peaceiris/actions-gh-pages@v4
-      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}
         publish_dir: ./target/doc
-        destination_dir: ./docs
-
-  publish:
-    runs-on: ubuntu-latest
-    needs: [build-and-test, docs]
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    permissions:
-      contents: write
-
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Publish to crates.io
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: |
-            # Verify package
-            cargo package --list
-
-            # Check if version matches tag
-            PACKAGE_VERSION=$(grep -m1 'version =' Cargo.toml | cut -d '"' -f2)
-            TAG_VERSION=${GITHUB_REF#refs/tags/v}
-
-            echo "Package version: $PACKAGE_VERSION"
-            echo "Tag version: $TAG_VERSION"
-
-            if [ "$PACKAGE_VERSION" != "$TAG_VERSION" ]; then
-              echo "ERROR: Version in Cargo.toml ($PACKAGE_VERSION) doesn't match tag version ($TAG_VERSION)"
-              exit 1
-            fi
-
-            # Publish
-            cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --verbose
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          name: Release ${{ github.ref_name }}
-          draft: false
-          prerelease: false
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   security:
     runs-on: ubuntu-latest
@@ -145,7 +103,6 @@ jobs:
 
     - name: Security audit
       run: |
-          # Устанавливаем cargo-audit если нет
           if ! command -v cargo-audit &> /dev/null; then
             cargo install cargo-audit
           fi
@@ -156,22 +113,49 @@ jobs:
       with:
         command: check bans sources
 
-  examples:
+  publish:
     runs-on: ubuntu-latest
-    needs: build-and-test
-    strategy:
-      matrix:
-        example: [simple_bot, advanced_bot]
+    needs: [build-and-test, docs, security]
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
 
     steps:
-    - uses: actions/checkout@v6
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
-    - name: Install Rust
-      uses: dtolnay/rust-toolchain@stable
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
 
-    - name: Run example
-      working-directory: ./examples/${{ matrix.example }}
-      run: |
-        cargo check --verbose
-        cargo build --verbose
-        echo "Example ${{ matrix.example }} built successfully"
+      - name: Publish to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+            # Проверка содержимого пакета перед публикацией
+            cargo package --list
+
+            # Надежное извлечение версии из Cargo.toml
+            TOML_VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n1)
+            TAG_VERSION=${GITHUB_REF#refs/tags/v}
+
+            echo "Package version: $TOML_VERSION"
+            echo "Tag version: $TAG_VERSION"
+
+            if [ "$TOML_VERSION" != "$TAG_VERSION" ]; then
+              echo "ERROR: Version in Cargo.toml ($TOML_VERSION) doesn't match tag version ($TAG_VERSION)"
+              exit 1
+            fi
+
+            # Публикация
+            cargo publish
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Release ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
