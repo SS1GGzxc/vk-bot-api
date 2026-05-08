@@ -52,10 +52,8 @@ pub mod prelude {
 
 // Re-exports
 pub use api::{
-    VkApi, VkApiBuilder, VkApiConfig,
-    LongPollServer, UploadServer, UploadResponse,
-    SavedPhoto, PhotoSizeInfo, SavedDocument, DocInfo, AudioMessageInfo,
-    DownloadedFile,
+    AudioMessageInfo, DocInfo, DownloadedFile, LongPollServer, PhotoSizeInfo, SavedDocument,
+    SavedPhoto, UploadResponse, UploadServer, VkApi, VkApiBuilder, VkApiConfig,
 };
 pub use bot::{VkBot, VkBotBuilder, VkBotConfig};
 pub use error::{VkError, VkResult};

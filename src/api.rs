@@ -878,13 +878,14 @@ impl VkApi {
         }
 
         let response = self.call_method("docs.save", params).await?;
-        
+
         crate::vk_log!("docs.save response: {}", response);
 
         let doc_response: DocSaveResponse =
             serde_json::from_value(response["response"].clone()).map_err(VkError::JsonError)?;
-        
-        crate::vk_log!("Parsed doc response: type={:?}, has_doc={}, has_audio_msg={}", 
+
+        crate::vk_log!(
+            "Parsed doc response: type={:?}, has_doc={}, has_audio_msg={}",
             doc_response.doc_type,
             doc_response.doc.is_some(),
             doc_response.audio_message.is_some()
@@ -900,19 +901,24 @@ impl VkApi {
 
     /// Upload file to VK server
     #[cfg(feature = "reqwest")]
-    pub async fn upload_file(&self, upload_url: &str, file_data: Vec<u8>, filename: &str) -> VkResult<UploadResponse> {
+    pub async fn upload_file(
+        &self,
+        upload_url: &str,
+        file_data: Vec<u8>,
+        filename: &str,
+    ) -> VkResult<UploadResponse> {
         // Detect content type from filename extension
         let content_type = Self::detect_content_type(filename);
-        
-        let mut part = reqwest::multipart::Part::bytes(file_data)
-            .file_name(filename.to_string());
-        
+
+        let mut part = reqwest::multipart::Part::bytes(file_data).file_name(filename.to_string());
+
         if let Some(ct) = content_type {
-            part = part.mime_str(&ct).map_err(|e| VkError::InternalError(format!("Invalid MIME type: {}", e)))?;
+            part = part
+                .mime_str(&ct)
+                .map_err(|e| VkError::InternalError(format!("Invalid MIME type: {}", e)))?;
         }
-        
-        let form = reqwest::multipart::Form::new()
-            .part("file", part);
+
+        let form = reqwest::multipart::Form::new().part("file", part);
 
         crate::vk_log!("Uploading file '{}' to {}", filename, upload_url);
 
@@ -925,9 +931,11 @@ impl VkApi {
             .map_err(|e| VkError::NetworkError(format!("Upload request failed: {}", e)))?;
 
         let status = response.status();
-        
+
         // Get raw response text
-        let response_text = response.text().await
+        let response_text = response
+            .text()
+            .await
             .map_err(|e| VkError::NetworkError(format!("Failed to read response: {}", e)))?;
 
         crate::vk_log!("Upload response (status: {}): {}", status, response_text);
@@ -940,11 +948,13 @@ impl VkApi {
         }
 
         // Parse the JSON response
-        let upload_response: UploadResponse = serde_json::from_str(&response_text)
-            .map_err(|e| VkError::InvalidResponse(format!(
-                "Failed to parse upload response: {}. Raw response: {}",
-                e, response_text
-            )))?;
+        let upload_response: UploadResponse =
+            serde_json::from_str(&response_text).map_err(|e| {
+                VkError::InvalidResponse(format!(
+                    "Failed to parse upload response: {}. Raw response: {}",
+                    e, response_text
+                ))
+            })?;
 
         Ok(upload_response)
     }
@@ -982,14 +992,18 @@ impl VkApi {
             .await?;
 
         // Validate upload response for photos
-        if upload_response.server == 0 || upload_response.photo.is_empty() || upload_response.hash.is_empty() {
+        if upload_response.server == 0
+            || upload_response.photo.is_empty()
+            || upload_response.hash.is_empty()
+        {
             return Err(VkError::InvalidResponse(
-                "Upload response missing photo data. Server, photo, or hash is empty".to_string()
+                "Upload response missing photo data. Server, photo, or hash is empty".to_string(),
             ));
         }
 
-        crate::vk_log!("Photo upload successful: server={}, photo length={}", 
-            upload_response.server, 
+        crate::vk_log!(
+            "Photo upload successful: server={}, photo length={}",
+            upload_response.server,
             upload_response.photo.len()
         );
 
@@ -1045,11 +1059,12 @@ impl VkApi {
         // Validate upload response
         if upload_response.file.is_empty() {
             return Err(VkError::InvalidResponse(
-                "Upload response missing file data".to_string()
+                "Upload response missing file data".to_string(),
             ));
         }
 
-        crate::vk_log!("Document upload successful: file field length={}", 
+        crate::vk_log!(
+            "Document upload successful: file field length={}",
             upload_response.file.len()
         );
 
@@ -1101,11 +1116,12 @@ impl VkApi {
         // Validate upload response
         if upload_response.file.is_empty() {
             return Err(VkError::InvalidResponse(
-                "Upload response missing file data".to_string()
+                "Upload response missing file data".to_string(),
             ));
         }
 
-        crate::vk_log!("Voice message upload successful: file field length={}", 
+        crate::vk_log!(
+            "Voice message upload successful: file field length={}",
             upload_response.file.len()
         );
 
@@ -1282,7 +1298,7 @@ pub struct UploadServer {
 }
 
 /// Upload response from VK
-/// 
+///
 /// Note: VK returns different fields depending on upload type:
 /// - Photo uploads: server, photo, hash
 /// - Document uploads: file
