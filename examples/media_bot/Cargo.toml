@@ -1,0 +1,12 @@
+[package]
+name = "media_bot"
+version = "1.0.0"
+edition = "2024"
+
+[dependencies]
+vk-bot-api = { path = "../..", features = ["full", "logging"] }
+tokio = { version = "1.49", features = ["full", "macros", "rt-multi-thread"] }
+async-trait = "0.1"
+env_logger = "0.11"
+dotenv = "0.15"
+log = "0.4"

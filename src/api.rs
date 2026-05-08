@@ -1,5 +1,6 @@
 use crate::error::{VkError, VkResponseExt, VkResult};
 use crate::keyboard::Keyboard;
+use serde::Deserialize;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::time::Duration;
@@ -767,11 +768,602 @@ impl VkApi {
         )
         .await
     }
+
+    // ==================== MEDIA UPLOAD METHODS ====================
+
+    /// Get upload server for photos
+    pub async fn photos_get_messages_upload_server(&self, peer_id: i64) -> VkResult<UploadServer> {
+        let mut params = HashMap::new();
+        params.insert("peer_id".to_string(), peer_id.to_string());
+
+        let response = self
+            .call_method("photos.getMessagesUploadServer", params)
+            .await?;
+
+        let upload_url = response["response"]["upload_url"]
+            .as_str()
+            .ok_or_else(|| VkError::MissingField("upload_url".to_string()))?
+            .to_string();
+
+        Ok(UploadServer { upload_url })
+    }
+
+    /// Save uploaded photo
+    pub async fn photos_save_messages_photo(
+        &self,
+        photo: &str,
+        server: i64,
+        hash: &str,
+    ) -> VkResult<Vec<SavedPhoto>> {
+        let mut params = HashMap::new();
+        params.insert("photo".to_string(), photo.to_string());
+        params.insert("server".to_string(), server.to_string());
+        params.insert("hash".to_string(), hash.to_string());
+
+        let response = self.call_method("photos.saveMessagesPhoto", params).await?;
+
+        let photos: Vec<SavedPhoto> =
+            serde_json::from_value(response["response"].clone()).map_err(VkError::JsonError)?;
+
+        Ok(photos)
+    }
+
+    /// Get upload server for documents
+    pub async fn docs_get_upload_server(
+        &self,
+        peer_id: Option<i64>,
+        doc_type: Option<&str>,
+    ) -> VkResult<UploadServer> {
+        let mut params = HashMap::new();
+
+        if let Some(peer_id) = peer_id {
+            params.insert("peer_id".to_string(), peer_id.to_string());
+        }
+
+        if let Some(doc_type) = doc_type {
+            params.insert("type".to_string(), doc_type.to_string());
+        }
+
+        let response = self.call_method("docs.getUploadServer", params).await?;
+
+        let upload_url = response["response"]["upload_url"]
+            .as_str()
+            .ok_or_else(|| VkError::MissingField("upload_url".to_string()))?
+            .to_string();
+
+        Ok(UploadServer { upload_url })
+    }
+
+    /// Get upload server for documents (for community messages)
+    pub async fn docs_get_messages_upload_server(
+        &self,
+        peer_id: i64,
+        doc_type: Option<&str>,
+    ) -> VkResult<UploadServer> {
+        let mut params = HashMap::new();
+        params.insert("peer_id".to_string(), peer_id.to_string());
+
+        if let Some(doc_type) = doc_type {
+            params.insert("type".to_string(), doc_type.to_string());
+        }
+
+        let response = self
+            .call_method("docs.getMessagesUploadServer", params)
+            .await?;
+
+        let upload_url = response["response"]["upload_url"]
+            .as_str()
+            .ok_or_else(|| VkError::MissingField("upload_url".to_string()))?
+            .to_string();
+
+        Ok(UploadServer { upload_url })
+    }
+
+    /// Save uploaded document
+    pub async fn docs_save(
+        &self,
+        file: &str,
+        title: Option<&str>,
+        tags: Option<&str>,
+    ) -> VkResult<SavedDocument> {
+        let mut params = HashMap::new();
+        params.insert("file".to_string(), file.to_string());
+
+        if let Some(title) = title {
+            params.insert("title".to_string(), title.to_string());
+        }
+
+        if let Some(tags) = tags {
+            params.insert("tags".to_string(), tags.to_string());
+        }
+
+        let response = self.call_method("docs.save", params).await?;
+        
+        crate::vk_log!("docs.save response: {}", response);
+
+        let doc_response: DocSaveResponse =
+            serde_json::from_value(response["response"].clone()).map_err(VkError::JsonError)?;
+        
+        crate::vk_log!("Parsed doc response: type={:?}, has_doc={}, has_audio_msg={}", 
+            doc_response.doc_type,
+            doc_response.doc.is_some(),
+            doc_response.audio_message.is_some()
+        );
+
+        Ok(SavedDocument {
+            doc: doc_response.doc,
+            audio_message: doc_response.audio_message,
+        })
+    }
+
+    // ==================== UPLOAD HELPERS ====================
+
+    /// Upload file to VK server
+    #[cfg(feature = "reqwest")]
+    pub async fn upload_file(&self, upload_url: &str, file_data: Vec<u8>, filename: &str) -> VkResult<UploadResponse> {
+        // Detect content type from filename extension
+        let content_type = Self::detect_content_type(filename);
+        
+        let mut part = reqwest::multipart::Part::bytes(file_data)
+            .file_name(filename.to_string());
+        
+        if let Some(ct) = content_type {
+            part = part.mime_str(&ct).map_err(|e| VkError::InternalError(format!("Invalid MIME type: {}", e)))?;
+        }
+        
+        let form = reqwest::multipart::Form::new()
+            .part("file", part);
+
+        crate::vk_log!("Uploading file '{}' to {}", filename, upload_url);
+
+        let response = self
+            .client
+            .post(upload_url)
+            .multipart(form)
+            .send()
+            .await
+            .map_err(|e| VkError::NetworkError(format!("Upload request failed: {}", e)))?;
+
+        let status = response.status();
+        
+        // Get raw response text
+        let response_text = response.text().await
+            .map_err(|e| VkError::NetworkError(format!("Failed to read response: {}", e)))?;
+
+        crate::vk_log!("Upload response (status: {}): {}", status, response_text);
+
+        if !status.is_success() {
+            return Err(VkError::NetworkError(format!(
+                "Upload failed with status {}: {}",
+                status, response_text
+            )));
+        }
+
+        // Parse the JSON response
+        let upload_response: UploadResponse = serde_json::from_str(&response_text)
+            .map_err(|e| VkError::InvalidResponse(format!(
+                "Failed to parse upload response: {}. Raw response: {}",
+                e, response_text
+            )))?;
+
+        Ok(upload_response)
+    }
+
+    /// Detect MIME type from filename extension
+    fn detect_content_type(filename: &str) -> Option<String> {
+        let ext = filename.split('.').next_back()?.to_lowercase();
+        match ext.as_str() {
+            "jpg" | "jpeg" => Some("image/jpeg".to_string()),
+            "png" => Some("image/png".to_string()),
+            "gif" => Some("image/gif".to_string()),
+            "pdf" => Some("application/pdf".to_string()),
+            "txt" => Some("text/plain".to_string()),
+            "ogg" => Some("audio/ogg".to_string()),
+            "mp3" => Some("audio/mpeg".to_string()),
+            "mp4" => Some("video/mp4".to_string()),
+            _ => None,
+        }
+    }
+
+    /// Upload and send photo
+    pub async fn send_photo(
+        &self,
+        peer_id: i64,
+        photo_data: Vec<u8>,
+        filename: &str,
+        caption: Option<&str>,
+    ) -> VkResult<i64> {
+        // Step 1: Get upload server
+        let upload_server = self.photos_get_messages_upload_server(peer_id).await?;
+
+        // Step 2: Upload photo
+        let upload_response = self
+            .upload_file(&upload_server.upload_url, photo_data, filename)
+            .await?;
+
+        // Validate upload response for photos
+        if upload_response.server == 0 || upload_response.photo.is_empty() || upload_response.hash.is_empty() {
+            return Err(VkError::InvalidResponse(
+                "Upload response missing photo data. Server, photo, or hash is empty".to_string()
+            ));
+        }
+
+        crate::vk_log!("Photo upload successful: server={}, photo length={}", 
+            upload_response.server, 
+            upload_response.photo.len()
+        );
+
+        // Step 3: Save photo
+        let saved_photos = self
+            .photos_save_messages_photo(
+                &upload_response.photo,
+                upload_response.server,
+                &upload_response.hash,
+            )
+            .await?;
+
+        // Step 4: Create attachment string
+        let attachment = saved_photos
+            .first()
+            .map(|p| format!("photo{}_{}", p.owner_id, p.id))
+            .ok_or_else(|| VkError::InvalidResponse("No photo saved".to_string()))?;
+
+        // Step 5: Send message with photo
+        let message = caption.unwrap_or("");
+        self.messages_send(
+            peer_id,
+            message,
+            None,
+            Some(&attachment),
+            None,
+            None,
+            None,
+            false,
+            false,
+            None,
+        )
+        .await
+    }
+
+    /// Upload and send document
+    pub async fn send_document(
+        &self,
+        peer_id: i64,
+        file_data: Vec<u8>,
+        filename: &str,
+        title: Option<&str>,
+        caption: Option<&str>,
+    ) -> VkResult<i64> {
+        // Step 1: Get upload server
+        let upload_server = self.docs_get_messages_upload_server(peer_id, None).await?;
+
+        // Step 2: Upload file
+        let upload_response = self
+            .upload_file(&upload_server.upload_url, file_data, filename)
+            .await?;
+
+        // Validate upload response
+        if upload_response.file.is_empty() {
+            return Err(VkError::InvalidResponse(
+                "Upload response missing file data".to_string()
+            ));
+        }
+
+        crate::vk_log!("Document upload successful: file field length={}", 
+            upload_response.file.len()
+        );
+
+        // Step 3: Save document
+        let saved_doc = self
+            .docs_save(&upload_response.file, title.or(Some(filename)), None)
+            .await?;
+
+        // Step 4: Create attachment string
+        let doc = saved_doc
+            .doc
+            .ok_or_else(|| VkError::InvalidResponse("No document saved".to_string()))?;
+        let attachment = format!("doc{}_{}", doc.owner_id, doc.id);
+
+        // Step 5: Send message with document
+        let message = caption.unwrap_or("");
+        self.messages_send(
+            peer_id,
+            message,
+            None,
+            Some(&attachment),
+            None,
+            None,
+            None,
+            false,
+            false,
+            None,
+        )
+        .await
+    }
+
+    /// Upload and send audio message (voice message)
+    pub async fn send_voice_message(
+        &self,
+        peer_id: i64,
+        audio_data: Vec<u8>,
+        filename: &str,
+    ) -> VkResult<i64> {
+        // Step 1: Get upload server for audio messages
+        let upload_server = self
+            .docs_get_messages_upload_server(peer_id, Some("audio_message"))
+            .await?;
+
+        // Step 2: Upload file
+        let upload_response = self
+            .upload_file(&upload_server.upload_url, audio_data, filename)
+            .await?;
+
+        // Validate upload response
+        if upload_response.file.is_empty() {
+            return Err(VkError::InvalidResponse(
+                "Upload response missing file data".to_string()
+            ));
+        }
+
+        crate::vk_log!("Voice message upload successful: file field length={}", 
+            upload_response.file.len()
+        );
+
+        // Step 3: Save document
+        let saved_doc = self
+            .docs_save(&upload_response.file, Some(filename), None)
+            .await?;
+
+        // Step 4: Check if audio_message is present
+        if saved_doc.audio_message.is_none() {
+            return Err(VkError::InvalidResponse(
+                "Audio message was not processed".to_string(),
+            ));
+        }
+
+        // Step 5: Create attachment string from doc
+        let doc = saved_doc
+            .doc
+            .ok_or_else(|| VkError::InvalidResponse("No document saved".to_string()))?;
+        let attachment = format!("doc{}_{}", doc.owner_id, doc.id);
+
+        // Step 6: Send message with audio
+        self.messages_send(
+            peer_id,
+            "",
+            None,
+            Some(&attachment),
+            None,
+            None,
+            None,
+            false,
+            false,
+            None,
+        )
+        .await
+    }
+
+    // ==================== DOWNLOAD METHODS ====================
+
+    /// Download file from URL
+    #[cfg(feature = "reqwest")]
+    pub async fn download_file(&self, url: &str) -> VkResult<DownloadedFile> {
+        let response = self
+            .client
+            .get(url)
+            .send()
+            .await
+            .map_err(|e| VkError::NetworkError(e.to_string()))?;
+
+        if !response.status().is_success() {
+            return Err(VkError::NetworkError(format!(
+                "Download failed: {}",
+                response.status()
+            )));
+        }
+
+        let content_type = response
+            .headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_string());
+
+        let data = response
+            .bytes()
+            .await
+            .map_err(|e| VkError::NetworkError(e.to_string()))?;
+
+        Ok(DownloadedFile {
+            data: data.to_vec(),
+            content_type,
+        })
+    }
+
+    /// Download photo by attachment
+    pub async fn download_photo(&self, photo: &crate::models::Photo) -> VkResult<DownloadedFile> {
+        // Get the largest available size
+        let size = photo
+            .sizes
+            .iter()
+            .max_by_key(|s| s.width * s.height)
+            .ok_or_else(|| VkError::InvalidResponse("Photo has no sizes".to_string()))?;
+
+        self.download_file(&size.url).await
+    }
+
+    /// Download document
+    pub async fn download_document(
+        &self,
+        doc: &crate::models::Document,
+    ) -> VkResult<DownloadedFile> {
+        self.download_file(&doc.url).await
+    }
+
+    /// Download audio
+    pub async fn download_audio(&self, audio: &crate::models::Audio) -> VkResult<DownloadedFile> {
+        let url = audio
+            .url
+            .as_ref()
+            .ok_or_else(|| VkError::InvalidResponse("Audio has no URL".to_string()))?;
+
+        self.download_file(url).await
+    }
+
+    /// Download video thumbnail
+    pub async fn download_video_thumbnail(
+        &self,
+        video: &crate::models::Video,
+    ) -> VkResult<DownloadedFile> {
+        let image = video
+            .image
+            .first()
+            .ok_or_else(|| VkError::InvalidResponse("Video has no thumbnails".to_string()))?;
+
+        self.download_file(&image.url).await
+    }
+
+    /// Download sticker
+    pub async fn download_sticker(
+        &self,
+        sticker: &crate::models::Sticker,
+    ) -> VkResult<DownloadedFile> {
+        let image = sticker
+            .images
+            .first()
+            .ok_or_else(|| VkError::InvalidResponse("Sticker has no images".to_string()))?;
+
+        self.download_file(&image.url).await
+    }
+
+    /// Download audio message
+    pub async fn download_audio_message(
+        &self,
+        audio_msg: &crate::models::AudioMessage,
+    ) -> VkResult<DownloadedFile> {
+        // Prefer MP3 over OGG for better compatibility
+        self.download_file(&audio_msg.link_mp3).await
+    }
+
+    /// Forward downloaded file back to another peer
+    pub async fn forward_attachment<A: AsRef<str>>(
+        &self,
+        peer_id: i64,
+        attachment: A,
+        caption: Option<&str>,
+    ) -> VkResult<i64> {
+        self.messages_send(
+            peer_id,
+            caption.unwrap_or(""),
+            None,
+            Some(attachment.as_ref()),
+            None,
+            None,
+            None,
+            false,
+            false,
+            None,
+        )
+        .await
+    }
 }
 
+/// Long Poll server information
 #[derive(Debug, Clone)]
 pub struct LongPollServer {
     pub server: String,
     pub key: String,
     pub ts: String,
+}
+
+/// Upload server information
+#[derive(Debug, Clone)]
+pub struct UploadServer {
+    pub upload_url: String,
+}
+
+/// Upload response from VK
+/// 
+/// Note: VK returns different fields depending on upload type:
+/// - Photo uploads: server, photo, hash
+/// - Document uploads: file
+#[derive(Debug, Clone, Deserialize)]
+pub struct UploadResponse {
+    #[serde(default)]
+    pub server: i64,
+    #[serde(default)]
+    pub photo: String,
+    #[serde(default)]
+    pub hash: String,
+    #[serde(default)]
+    pub file: String,
+}
+
+/// Saved photo information
+#[derive(Debug, Clone, Deserialize)]
+pub struct SavedPhoto {
+    pub id: i64,
+    pub owner_id: i64,
+    #[serde(default)]
+    pub access_key: Option<String>,
+    #[serde(default)]
+    pub sizes: Vec<PhotoSizeInfo>,
+}
+
+/// Photo size information
+#[derive(Debug, Clone, Deserialize)]
+pub struct PhotoSizeInfo {
+    #[serde(rename = "type")]
+    pub size_type: String,
+    pub url: String,
+    pub width: i32,
+    pub height: i32,
+}
+
+/// Document information from save response
+#[derive(Debug, Clone, Deserialize)]
+pub struct DocInfo {
+    pub id: i64,
+    pub owner_id: i64,
+    pub title: String,
+    pub size: i64,
+    pub ext: String,
+    pub url: String,
+    pub date: i64,
+    #[serde(rename = "type")]
+    pub doc_type: i32,
+}
+
+/// Audio message information from save response
+#[derive(Debug, Clone, Deserialize)]
+pub struct AudioMessageInfo {
+    pub duration: i32,
+    #[serde(default)]
+    pub waveform: Vec<i32>,
+    pub link_ogg: String,
+    pub link_mp3: String,
+}
+
+/// Saved document response
+#[derive(Debug, Clone)]
+pub struct SavedDocument {
+    pub doc: Option<DocInfo>,
+    pub audio_message: Option<AudioMessageInfo>,
+}
+
+/// Response structure from docs.save
+#[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
+struct DocSaveResponse {
+    #[serde(rename = "type")]
+    pub doc_type: Option<String>,
+    pub doc: Option<DocInfo>,
+    #[serde(rename = "audio_message")]
+    pub audio_message: Option<AudioMessageInfo>,
+}
+
+/// Downloaded file information
+#[derive(Debug, Clone)]
+pub struct DownloadedFile {
+    pub data: Vec<u8>,
+    pub content_type: Option<String>,
 }
