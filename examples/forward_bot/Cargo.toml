@@ -1,0 +1,12 @@
+[package]
+name = "forward_bot"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+vk-bot-api = { path = "../../", features = ["full"] }
+tokio = { version = "1.49", features = ["full", "macros"] }
+env_logger = "0.11"
+dotenv = "0.15"
+log = "0.4"
+async-trait = "0.1"
