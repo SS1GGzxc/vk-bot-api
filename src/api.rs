@@ -907,56 +907,108 @@ impl VkApi {
         file_data: Vec<u8>,
         filename: &str,
     ) -> VkResult<UploadResponse> {
-        // Detect content type from filename extension
+        let max_retries = 3;
+        let mut attempt = 0;
+
+        // Detect content type from filename extension once
         let content_type = Self::detect_content_type(filename);
+        let mut file_data_opt = Some(file_data);
 
-        let mut part = reqwest::multipart::Part::bytes(file_data).file_name(filename.to_string());
+        loop {
+            attempt += 1;
 
-        if let Some(ct) = content_type {
-            part = part
-                .mime_str(&ct)
-                .map_err(|e| VkError::InternalError(format!("Invalid MIME type: {}", e)))?;
+            // Only clone file data if we might need to retry again.
+            // On the final attempt, take the data and consume it.
+            let data = if attempt >= max_retries {
+                file_data_opt.take().unwrap()
+            } else {
+                file_data_opt.as_ref().unwrap().clone()
+            };
+
+            let mut part = reqwest::multipart::Part::bytes(data).file_name(filename.to_string());
+
+            if let Some(ref ct) = content_type {
+                part = part
+                    .mime_str(ct)
+                    .map_err(|e| VkError::InternalError(format!("Invalid MIME type: {}", e)))?;
+            }
+
+            let form = reqwest::multipart::Form::new().part("file", part);
+
+            crate::vk_log!("Uploading file '{}' to {} (Attempt {}/{})", filename, upload_url, attempt, max_retries);
+
+            let response_result = self
+                .client
+                .post(upload_url)
+                .multipart(form)
+                .send()
+                .await;
+
+            let response = match response_result {
+                Ok(resp) => resp,
+                Err(e) => {
+                    crate::vk_log!("Upload request failed: {}", e);
+                    if attempt >= max_retries {
+                        return Err(VkError::NetworkError(format!("Upload request failed after {} attempts: {}", max_retries, e)));
+                    }
+                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                    continue;
+                }
+            };
+
+            let status = response.status();
+
+            // Get raw response text
+            let response_text = match response.text().await {
+                Ok(text) => text,
+                Err(e) => {
+                    crate::vk_log!("Failed to read response: {}", e);
+                    if attempt >= max_retries {
+                        return Err(VkError::NetworkError(format!("Failed to read response after {} attempts: {}", max_retries, e)));
+                    }
+                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                    continue;
+                }
+            };
+
+            crate::vk_log!("Upload response (status: {}): {}", status, response_text);
+
+            if !status.is_success() {
+                if attempt >= max_retries {
+                    return Err(VkError::NetworkError(format!(
+                        "Upload failed with status {}: {}",
+                        status, response_text
+                    )));
+                }
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                continue;
+            }
+
+            // Parse the JSON response
+            let upload_response: UploadResponse = match serde_json::from_str(&response_text) {
+                Ok(resp) => resp,
+                Err(e) => {
+                    crate::vk_log!("Failed to parse JSON: {}", e);
+                    if attempt >= max_retries {
+                        return Err(VkError::InvalidResponse(format!(
+                            "Failed to parse upload response: {}. Raw response: {}",
+                            e, response_text
+                        )));
+                    }
+                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                    continue;
+                }
+            };
+
+            if let Some(err_msg) = upload_response.error {
+                return Err(VkError::ApiError {
+                    code: 0,
+                    message: format!("Upload failed: {}", err_msg),
+                });
+            }
+
+            return Ok(upload_response);
         }
-
-        let form = reqwest::multipart::Form::new().part("file", part);
-
-        crate::vk_log!("Uploading file '{}' to {}", filename, upload_url);
-
-        let response = self
-            .client
-            .post(upload_url)
-            .multipart(form)
-            .send()
-            .await
-            .map_err(|e| VkError::NetworkError(format!("Upload request failed: {}", e)))?;
-
-        let status = response.status();
-
-        // Get raw response text
-        let response_text = response
-            .text()
-            .await
-            .map_err(|e| VkError::NetworkError(format!("Failed to read response: {}", e)))?;
-
-        crate::vk_log!("Upload response (status: {}): {}", status, response_text);
-
-        if !status.is_success() {
-            return Err(VkError::NetworkError(format!(
-                "Upload failed with status {}: {}",
-                status, response_text
-            )));
-        }
-
-        // Parse the JSON response
-        let upload_response: UploadResponse =
-            serde_json::from_str(&response_text).map_err(|e| {
-                VkError::InvalidResponse(format!(
-                    "Failed to parse upload response: {}. Raw response: {}",
-                    e, response_text
-                ))
-            })?;
-
-        Ok(upload_response)
     }
 
     /// Detect MIME type from filename extension
@@ -1019,7 +1071,13 @@ impl VkApi {
         // Step 4: Create attachment string
         let attachment = saved_photos
             .first()
-            .map(|p| format!("photo{}_{}", p.owner_id, p.id))
+            .map(|p| {
+                if let Some(ref key) = p.access_key {
+                    format!("photo{}_{}_{}", p.owner_id, p.id, key)
+                } else {
+                    format!("photo{}_{}", p.owner_id, p.id)
+                }
+            })
             .ok_or_else(|| VkError::InvalidResponse("No photo saved".to_string()))?;
 
         // Step 5: Send message with photo
@@ -1077,7 +1135,11 @@ impl VkApi {
         let doc = saved_doc
             .doc
             .ok_or_else(|| VkError::InvalidResponse("No document saved".to_string()))?;
-        let attachment = format!("doc{}_{}", doc.owner_id, doc.id);
+        let attachment = if let Some(ref key) = doc.access_key {
+            format!("doc{}_{}_{}", doc.owner_id, doc.id, key)
+        } else {
+            format!("doc{}_{}", doc.owner_id, doc.id)
+        };
 
         // Step 5: Send message with document
         let message = caption.unwrap_or("");
@@ -1130,18 +1192,15 @@ impl VkApi {
             .docs_save(&upload_response.file, Some(filename), None)
             .await?;
 
-        // Step 4: Check if audio_message is present
-        if saved_doc.audio_message.is_none() {
-            return Err(VkError::InvalidResponse(
-                "Audio message was not processed".to_string(),
-            ));
-        }
-
-        // Step 5: Create attachment string from doc
-        let doc = saved_doc
-            .doc
-            .ok_or_else(|| VkError::InvalidResponse("No document saved".to_string()))?;
-        let attachment = format!("doc{}_{}", doc.owner_id, doc.id);
+        // Step 4 & 5: Create attachment string from audio_message
+        let audio = saved_doc
+            .audio_message
+            .ok_or_else(|| VkError::InvalidResponse("Audio message was not processed".to_string()))?;
+        let attachment = if let Some(ref key) = audio.access_key {
+            format!("doc{}_{}_{}", audio.owner_id, audio.id, key)
+        } else {
+            format!("doc{}_{}", audio.owner_id, audio.id)
+        };
 
         // Step 6: Send message with audio
         self.messages_send(
@@ -1312,6 +1371,7 @@ pub struct UploadResponse {
     pub hash: String,
     #[serde(default)]
     pub file: String,
+    pub error: Option<String>,
 }
 
 /// Saved photo information
@@ -1347,11 +1407,15 @@ pub struct DocInfo {
     pub date: i64,
     #[serde(rename = "type")]
     pub doc_type: i32,
+    pub access_key: Option<String>,
 }
 
 /// Audio message information from save response
 #[derive(Debug, Clone, Deserialize)]
 pub struct AudioMessageInfo {
+    pub id: i64,
+    pub owner_id: i64,
+    pub access_key: Option<String>,
     pub duration: i32,
     #[serde(default)]
     pub waveform: Vec<i32>,
