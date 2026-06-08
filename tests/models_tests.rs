@@ -1,5 +1,5 @@
-use vk_bot_api::models::{Event, Update};
 use serde_json::json;
+use vk_bot_api::models::{Event, Update};
 
 #[test]
 fn test_parse_message_new_update() {

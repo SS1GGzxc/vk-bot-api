@@ -1,5 +1,5 @@
-use vk_bot_api::error::{VkError, VkResponseExt};
 use serde_json::json;
+use vk_bot_api::error::{VkError, VkResponseExt};
 
 #[test]
 fn test_vk_error_creation() {
@@ -42,7 +42,7 @@ fn test_extract_error_failure() {
     assert!(response.has_error());
     let result = response.extract_error();
     assert!(result.is_err());
-    
+
     if let Err(VkError::ApiError { code, message }) = result {
         assert_eq!(code, 5);
         assert_eq!(message, "User authorization failed: invalid session.");

@@ -1,4 +1,6 @@
-use vk_bot_api::utils::{create_mention, create_hashtag, escape_text, truncate_text, split_message};
+use vk_bot_api::utils::{
+    create_hashtag, create_mention, escape_text, split_message, truncate_text,
+};
 
 #[test]
 fn test_create_mention() {
@@ -13,7 +15,10 @@ fn test_create_hashtag() {
 
 #[test]
 fn test_escape_text() {
-    assert_eq!(escape_text("hello <world> & others"), "hello &lt;world&gt; &amp; others");
+    assert_eq!(
+        escape_text("hello <world> & others"),
+        "hello &lt;world&gt; &amp; others"
+    );
 }
 
 #[test]
